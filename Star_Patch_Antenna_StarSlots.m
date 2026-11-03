@@ -697,6 +697,15 @@ title( 'reflection coefficient S_{11}' );
 xlabel( 'frequency f / MHz' );
 ylabel( 'reflection coefficient |S_{11}|' );
 
+% plot VSWR (paper Fig. 7)
+VSWR = (1+abs(s11))./(1-abs(s11));
+figure
+plot( freq/1e6, VSWR, 'b-', 'Linewidth', 2 );
+grid on
+title( 'VSWR at the 50 Ohm feed' );
+xlabel( 'frequency f / MHz' );
+ylabel( 'VSWR' );
+
 drawnow
 
 %% NFFF Plots
@@ -721,6 +730,8 @@ disp( ['radiated power: Prad = ' num2str(nf2ff.Prad) ' Watt']);
 disp( ['directivity: Dmax = ' num2str(nf2ff.Dmax) ' (' num2str(10*log10(nf2ff.Dmax)) ' dBi)'] );
 P_acc = port.P_inc(f_res_ind) * (1 - abs(s11(f_res_ind))^2); % accepted power
 disp( ['efficiency: nu_rad = ' num2str(100*nf2ff.Prad./P_acc) ' %']);
+gain_lin = (nf2ff.Prad./P_acc) * nf2ff.Dmax; % G = eta_rad * D
+disp( ['gain: G = ' num2str(10*log10(gain_lin)) ' dB (paper: 7.3 dB)'] );
 
 % normalized directivity as polar plot
 figure
@@ -746,3 +757,7 @@ plotFF3D(nf2ff,'logscale',-20);
 
 E_far_normalized = nf2ff.E_norm{1} / max(nf2ff.E_norm{1}(:)) * nf2ff.Dmax;
 DumpFF2VTK([Sim_Path '/3D_Pattern.vtk'],E_far_normalized,thetaRange,phiRange,'scale',1e-3);
+
+% save port/nf2ff structs for PlotStarSlotResults.m (standalone viewer)
+save([Sim_Path '/results_workspace.mat'], 'port', 'nf2ff', 'freq', 's11', 'f_res', 'f_res_ind');
+disp('Saved results_workspace.mat for the standalone results viewer.');
