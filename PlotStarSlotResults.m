@@ -102,7 +102,7 @@ fsw   = linspace(2.0e9, 3.6e9, 17);
 th_sw = (0:5:180)*pi/180;
 ph_sw = (0:15:345)*pi/180;
 Gsw = zeros(size(fsw)); Dsw = Gsw; Esw = Gsw;
-Pacc_fine = port.P_inc(:) .* (1 - abs(s11(:)).^2);
+Pacc_fine = port.P_acc(:); % accepted power from calcPort
 for k = 1:length(fsw)
     disp(['  NF2FF ' num2str(k) '/' num2str(length(fsw)) ' @ ' ...
           num2str(fsw(k)/1e9, '%.3f') ' GHz']);

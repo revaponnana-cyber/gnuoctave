@@ -728,7 +728,7 @@ nf2ff = CalcNF2FF(nf2ff, Sim_Path, f_res, [-180:2:180]*pi/180, [0 90]*pi/180);
 % display power and directivity
 disp( ['radiated power: Prad = ' num2str(nf2ff.Prad) ' Watt']);
 disp( ['directivity: Dmax = ' num2str(nf2ff.Dmax) ' (' num2str(10*log10(nf2ff.Dmax)) ' dBi)'] );
-P_acc = port.P_inc(f_res_ind) * (1 - abs(s11(f_res_ind))^2); % accepted power
+P_acc = port.P_acc(f_res_ind); % accepted power from calcPort
 disp( ['efficiency: nu_rad = ' num2str(100*nf2ff.Prad./P_acc) ' %']);
 gain_lin = (nf2ff.Prad./P_acc) * nf2ff.Dmax; % G = eta_rad * D
 disp( ['gain: G = ' num2str(10*log10(gain_lin)) ' dB (paper: 7.3 dB)'] );
