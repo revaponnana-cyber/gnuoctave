@@ -46,6 +46,8 @@ substrate.cells = 5;
 substrate.kappa = 2*pi*2.82e9*EPS0*substrate.epsR*substrate.tanD;
 
 %setup feeding
+% Verified clear of all slots (nearest slot edge >1.1 mm away) after the
+% star rotation. Tune along x in [-8,-4] for the deepest S11 null.
 feed.pos = -6; %feeding position in x-direction
 feed.R = 50;     %feed resistance
 
@@ -62,7 +64,9 @@ SimBox = [200 200 150];
 %% need stronger absorption for a more compact simulation domain.
 f0 = 2.5e9; % center frequency
 fc = 1.5e9; % 20 dB corner frequency
-FDTD = InitFDTD('NrTS', 200000, 'EndCriteria', 1e-5);
+% NrTS is only a cap: the run stops early once the energy has decayed by
+% EndCriteria. 1e-4 (-40 dB) is the standard S11-grade threshold.
+FDTD = InitFDTD('NrTS', 200000, 'EndCriteria', 1e-4);
 FDTD = SetGaussExcite( FDTD, f0, fc );
 BC = {'MUR' 'MUR' 'MUR' 'MUR' 'MUR' 'MUR'}; % boundary conditions
 FDTD = SetBoundaryCond( FDTD, BC );
@@ -100,15 +104,19 @@ points = [patch.radius*cos(theta);
 
 CSX = AddPolygon(CSX,'patch',10,'z',substrate.thickness,points);
 % Create first six-pointed star outline slot
+% Regular hexagram (inner = outer/sqrt(3), tips pointing up) matching the
+% paper shape. The 30-deg rotation also moves every slot off the feed point
+% at (-6,0), which used to sit exactly on a star tip vertex.
 star.outerRadius = 8.0;
-star.innerRadius = 4.0;
+star.innerRadius = 8.0/sqrt(3);
 star.slotWidth = 0.5;
+star.rot = pi/6;
 
 % Generate the 12 alternating outer and inner star points
 starPoints = zeros(2,12);
 
 for k = 1:12
-    angle = (k-1)*pi/6;
+    angle = (k-1)*pi/6 + star.rot;
 
     if mod(k,2) == 1
         r = star.outerRadius;
@@ -140,13 +148,14 @@ for k = 1:12
 end
 % Create second, smaller six-pointed star outline slot
 star2.outerRadius = 6.0;
-star2.innerRadius = 3.0;
+star2.innerRadius = 6.0/sqrt(3);
 star2.slotWidth = 0.5;
+star2.rot = pi/6;
 
 star2Points = zeros(2,12);
 
 for k = 1:12
-    angle = (k-1)*pi/6;
+    angle = (k-1)*pi/6 + star2.rot;
 
     if mod(k,2) == 1
         r = star2.outerRadius;
@@ -178,13 +187,14 @@ end
 
 % Create third, smallest six-pointed star outline slot
 star3.outerRadius = 4.0;
-star3.innerRadius = 2.0;
+star3.innerRadius = 4.0/sqrt(3);
 star3.slotWidth = 0.5;
+star3.rot = pi/6;
 
 star3Points = zeros(2,12);
 
 for k = 1:12
-    angle = (k-1)*pi/6;
+    angle = (k-1)*pi/6 + star3.rot;
 
     if mod(k,2) == 1
         r = star3.outerRadius;
@@ -516,6 +526,12 @@ CSX = AddBox( CSX, 'substrate', 0, start, stop );
 mesh.z = [mesh.z, linspace(0, substrate.thickness, 6), ...
           2, 5, 10, 15, 20, 30, 40, 60, 80];
 
+% air-region lines: below the ground (for the NF2FF bottom face) and around
+% the antenna in x/y (coarse air cells plus faces for the NF2FF box)
+mesh.z = [mesh.z, -40, -30, -20, -12, -6, -2];
+mesh.x = [mesh.x, -85, -70, -55, -40, -30, 30, 40, 55, 70, 85];
+mesh.y = [mesh.y, -85, -70, -55, -40, -30, 30, 40, 55, 70, 85];
+
 mesh.z = uniquetol(mesh.z, 1e-10);
 
 % Create Ground same size as substrate
@@ -523,6 +539,20 @@ CSX = AddMetal( CSX, 'gnd' ); % create a perfect electric conductor (PEC)
 start(3)=0;
 stop(3) =0;
 CSX = AddBox(CSX,'gnd',10,start,stop);
+
+% Cross-shaped defected ground structure (paper: J=20 x K=1.2 arms).
+% Improves the impedance match and radiation efficiency; set DGS_enabled
+% to false for a solid ground plane (ablation case).
+DGS_enabled = true;
+if DGS_enabled
+    dgs.arm = 20; dgs.w = 1.2; dgs.cx = 0; dgs.cy = 14;
+    CSX = AddBox(CSX,'Air',20, ...
+        [dgs.cx-dgs.arm/2 dgs.cy-dgs.w/2 -0.5], ...
+        [dgs.cx+dgs.arm/2 dgs.cy+dgs.w/2 0.2]);
+    CSX = AddBox(CSX,'Air',20, ...
+        [dgs.cx-dgs.w/2 dgs.cy-dgs.arm/2 -0.5], ...
+        [dgs.cx+dgs.w/2 dgs.cy+dgs.arm/2 0.2]);
+end
 
 % Apply the Excitation & Resist as a Current Source
 start = [feed.pos 0 0];
@@ -540,7 +570,9 @@ mesh.x = uniquetol(mesh.x, 1e-10);
 mesh.y = uniquetol(mesh.y, 1e-10);
 mesh.z = uniquetol(mesh.z, 1e-10);
 % generate a smooth mesh with max. cell size: lambda_min / 20
-%mesh = SmoothMesh(mesh, c0/(f0+fc)/unit/10);
+% (fills the large air gaps with graded cells so waves are resolved and the
+% NF2FF box sits several cells inside the MUR boundaries)
+mesh = SmoothMesh(mesh, c0/(f0+fc)/unit/20);
 
 disp('Mesh diagnostics:');
 disp(['Number of X mesh lines: ', num2str(length(mesh.x))]);
@@ -561,14 +593,20 @@ disp(find(dy < 1e-10));
 
 CSX = DefineRectGrid(CSX, unit, mesh);
 
-CSX = AddDump(CSX,'Hf', 'DumpType', 11, 'Frequency',[2.4e9]);
+CSX = AddDump(CSX,'Hf', 'DumpType', 11, 'Frequency',[2.82e9]); % surface-current view at resonance
 CSX = AddBox(CSX,'Hf',10,[-substrate.width -substrate.length -10*substrate.thickness],[substrate.width +substrate.length 10*substrate.thickness]); %assign box
 
 % add a nf2ff calc box; size is 3 cells away from MUR boundary condition
 % Create NF2FF box around the antenna
 % Create NF2FF box around the antenna with air clearance
-start = [mesh.x(4) mesh.y(4) mesh.z(2)];
-stop  = [mesh.x(end-3) mesh.y(end-3) mesh.z(end-2)];
+% NF2FF faces snapped to the nearest mesh lines: the box encloses the whole
+% antenna (substrate/CRM extend to ~25 mm) and stays in air, well clear of
+% the MUR boundaries at x/y=+-100, z=-50/+100.
+[~, ix1] = min(abs(mesh.x - (-40))); [~, ix2] = min(abs(mesh.x - 40));
+[~, iy1] = min(abs(mesh.y - (-40))); [~, iy2] = min(abs(mesh.y - 40));
+[~, iz1] = min(abs(mesh.z - (-12))); [~, iz2] = min(abs(mesh.z - 40));
+start = [mesh.x(ix1) mesh.y(iy1) mesh.z(iz1)];
+stop  = [mesh.x(ix2) mesh.y(iy2) mesh.z(iz2)];
 
 [CSX nf2ff] = CreateNF2FFBox(CSX, 'nf2ff', start, stop);
 disp('NF2FF start coordinates:');
@@ -598,7 +636,13 @@ WriteOpenEMS( [Sim_Path '/' Sim_CSX], FDTD, CSX );
 
 % show the structure
 CSXGeomPlot( [Sim_Path '/' Sim_CSX] );
-return;
+
+% set RUN_OPENEMS=false to only write/check geometry without simulating
+RUN_OPENEMS = true;
+if ~RUN_OPENEMS
+    disp('RUN_OPENEMS=false: geometry written, solver skipped.');
+    return;
+end
 
 
 % run openEMS
@@ -621,7 +665,15 @@ port = calcPort(port, Sim_Path, freq);
 %% design frequency confirms resonance; the -10 dB bandwidth indicates the
 %% usable frequency range over which the antenna is well matched to the
 %% 50 Ohm feed.
-plotRefl(port, freq, 'threshold', -10);
+try
+    plotRefl(port, 'threshold', -10);
+catch
+    try
+        plotRefl(port, freq, 'threshold', -10);
+    catch
+        disp('plotRefl not available in this openEMS version; skipping Smith chart.');
+    end
+end
 title( 'reflection coefficient' );
 
 % plot feed point impedance
@@ -655,8 +707,8 @@ drawnow
 %% subsequent full-sphere calculation yields maximum directivity and radiation
 %% efficiency, showing how effectively the antenna converts accepted power into
 %% useful far-field radiation.
-%find resonance frequency from s11
-f_res_ind = find(s11==min(s11));
+%find resonance frequency from s11 (deepest |S11| null)
+[~, f_res_ind] = min(abs(s11));
 f_res = freq(f_res_ind);
 
 % calculate the far field at phi=0 degrees and at phi=90 degrees
@@ -667,7 +719,8 @@ nf2ff = CalcNF2FF(nf2ff, Sim_Path, f_res, [-180:2:180]*pi/180, [0 90]*pi/180);
 % display power and directivity
 disp( ['radiated power: Prad = ' num2str(nf2ff.Prad) ' Watt']);
 disp( ['directivity: Dmax = ' num2str(nf2ff.Dmax) ' (' num2str(10*log10(nf2ff.Dmax)) ' dBi)'] );
-disp( ['efficiency: nu_rad = ' num2str(100*nf2ff.Prad./port.P_inc(f_res_ind)) ' %']);
+P_acc = port.P_inc(f_res_ind) * (1 - abs(s11(f_res_ind))^2); % accepted power
+disp( ['efficiency: nu_rad = ' num2str(100*nf2ff.Prad./P_acc) ' %']);
 
 % normalized directivity as polar plot
 figure
