@@ -86,7 +86,11 @@ mesh.z = [-SimBox(3)/3 SimBox(3)*2/3];
 % Create Circular Patch
 CSX = AddMetal(CSX,'patch');
 
-patch.radius = 13.53;
+patch.radius = 14.5;
+
+% Create Air material for star-shaped slots
+CSX = AddMaterial(CSX, 'Air');
+CSX = SetMaterialProperty(CSX, 'Air', 'Epsilon', 1, 'Mue', 1);
 
 % Create 100 unique points around the circle
 theta = (0:99)*2*pi/100;
@@ -95,6 +99,410 @@ points = [patch.radius*cos(theta);
           patch.radius*sin(theta)];
 
 CSX = AddPolygon(CSX,'patch',10,'z',substrate.thickness,points);
+% Create first six-pointed star outline slot
+star.outerRadius = 8.0;
+star.innerRadius = 4.0;
+star.slotWidth = 0.5;
+
+% Generate the 12 alternating outer and inner star points
+starPoints = zeros(2,12);
+
+for k = 1:12
+    angle = (k-1)*pi/6;
+
+    if mod(k,2) == 1
+        r = star.outerRadius;
+    else
+        r = star.innerRadius;
+    end
+
+    starPoints(:,k) = [r*cos(angle); r*sin(angle)];
+end
+
+% Cut a thin air slot along each star edge
+for k = 1:12
+    next = mod(k,12) + 1;
+
+    p1 = starPoints(:,k);
+    p2 = starPoints(:,next);
+
+    edge = p2 - p1;
+    edgeLength = norm(edge);
+    normal = [-edge(2); edge(1)] / edgeLength;
+
+    offset = normal * star.slotWidth/2;
+
+    slotPoints = [p1+offset, p2+offset, ...
+                  p2-offset, p1-offset];
+
+    CSX = AddPolygon(CSX,'Air',20,'z', ...
+                     substrate.thickness,slotPoints);
+end
+% Create second, smaller six-pointed star outline slot
+star2.outerRadius = 6.0;
+star2.innerRadius = 3.0;
+star2.slotWidth = 0.5;
+
+star2Points = zeros(2,12);
+
+for k = 1:12
+    angle = (k-1)*pi/6;
+
+    if mod(k,2) == 1
+        r = star2.outerRadius;
+    else
+        r = star2.innerRadius;
+    end
+
+    star2Points(:,k) = [r*cos(angle); r*sin(angle)];
+end
+
+for k = 1:12
+    next = mod(k,12) + 1;
+
+    p1 = star2Points(:,k);
+    p2 = star2Points(:,next);
+
+    edge = p2 - p1;
+    edgeLength = norm(edge);
+    normal = [-edge(2); edge(1)] / edgeLength;
+
+    offset = normal * star2.slotWidth/2;
+
+    slotPoints = [p1+offset, p2+offset, ...
+                  p2-offset, p1-offset];
+
+    CSX = AddPolygon(CSX,'Air',20,'z', ...
+                     substrate.thickness,slotPoints);
+end
+
+% Create third, smallest six-pointed star outline slot
+star3.outerRadius = 4.0;
+star3.innerRadius = 2.0;
+star3.slotWidth = 0.5;
+
+star3Points = zeros(2,12);
+
+for k = 1:12
+    angle = (k-1)*pi/6;
+
+    if mod(k,2) == 1
+        r = star3.outerRadius;
+    else
+        r = star3.innerRadius;
+    end
+
+    star3Points(:,k) = [r*cos(angle); r*sin(angle)];
+end
+
+for k = 1:12
+    next = mod(k,12) + 1;
+
+    p1 = star3Points(:,k);
+    p2 = star3Points(:,next);
+
+    edge = p2 - p1;
+    edgeLength = norm(edge);
+    normal = [-edge(2); edge(1)] / edgeLength;
+
+    offset = normal * star3.slotWidth/2;
+
+    slotPoints = [p1+offset, p2+offset, ...
+                  p2-offset, p1-offset];
+
+    CSX = AddPolygon(CSX,'Air',20,'z', ...
+                     substrate.thickness,slotPoints);
+end
+% Create thin circular outline around the three stars
+ring.radius = 10.5;
+ring.slotWidth = 0.5;
+ring.segments = 120;
+
+for k = 1:ring.segments
+    angle1 = (k-1)*2*pi/ring.segments;
+    angle2 = k*2*pi/ring.segments;
+        % Leave small gaps at the top and bottom of the ring
+    angleMid = (angle1 + angle2)/2;
+    gapHalfAngle = (1.0/2)/ring.radius;
+
+    topDifference = abs(atan2( ...
+        sin(angleMid - pi/2), cos(angleMid - pi/2)));
+
+    bottomDifference = abs(atan2( ...
+        sin(angleMid - 3*pi/2), cos(angleMid - 3*pi/2)));
+
+    if topDifference < gapHalfAngle || ...
+       bottomDifference < gapHalfAngle
+        continue;
+    end
+
+    outerRadius = ring.radius + ring.slotWidth/2;
+    innerRadius = ring.radius - ring.slotWidth/2;
+
+    ringPoints = [
+        outerRadius*cos(angle1), outerRadius*cos(angle2), ...
+        innerRadius*cos(angle2), innerRadius*cos(angle1);
+        outerRadius*sin(angle1), outerRadius*sin(angle2), ...
+        innerRadius*sin(angle2), innerRadius*sin(angle1)
+    ];
+
+    CSX = AddPolygon(CSX,'Air',20,'z', ...
+                     substrate.thickness,ringPoints);
+end
+
+% ==========================================
+% CRM DESIGN - FIRST UNIT
+% ==========================================
+
+% CRM centre position
+% Four CRM corner positions
+crmPositions = [
+    -18,  18;   % Top-left
+     18,  18;   % Top-right
+    -18, -18;   % Bottom-left
+     18, -18    % Bottom-right
+];
+
+for crmIndex = 1:4
+    crm.centerX = crmPositions(crmIndex,1);
+    crm.centerY = crmPositions(crmIndex,2);
+
+% Dimensions from research paper Table 2
+crm.M = 0.2;
+crm.T = 5.0;
+crm.U = 5.95;
+
+% Ring drawing resolution
+crm.segments = 120;
+
+% Draw the outer circular ring
+for k = 1:crm.segments
+
+    angle1 = (k-1)*2*pi/crm.segments;
+    angle2 = k*2*pi/crm.segments;
+
+    rOuter = crm.U;
+    rInner = crm.U - crm.M;
+
+    ringPoints = [
+        rOuter*cos(angle1), rOuter*cos(angle2), ...
+        rInner*cos(angle2), rInner*cos(angle1);
+        rOuter*sin(angle1), rOuter*sin(angle2), ...
+        rInner*sin(angle2), rInner*sin(angle1)
+    ];
+
+    ringPoints(1,:) = ringPoints(1,:) + crm.centerX;
+    ringPoints(2,:) = ringPoints(2,:) + crm.centerY;
+
+    CSX = AddPolygon(CSX,'patch',20,'z', ...
+        substrate.thickness,ringPoints);
+end
+
+% Draw the inner circular ring
+% Draw the inner circular ring with four openings
+
+for k = 1:crm.segments
+
+    angle1 = (k-1)*2*pi/crm.segments;
+    angle2 = k*2*pi/crm.segments;
+    angleMid = (angle1 + angle2)/2;
+
+    % Leave openings at 12, 3, 6 and 9 o'clock
+    gapHalfAngle = 0.25/crm.T;
+
+    skipSegment = false;
+
+    for j = 0:3
+        gapAngle = j*pi/2;
+
+        angleDifference = abs(atan2( ...
+            sin(angleMid-gapAngle), ...
+            cos(angleMid-gapAngle)));
+
+        if angleDifference < gapHalfAngle
+            skipSegment = true;
+        end
+    end
+
+    if skipSegment
+        continue;
+    end
+
+    rOuter = crm.T;
+    rInner = crm.T - crm.M;
+
+    ringPoints = [
+        rOuter*cos(angle1), rOuter*cos(angle2), ...
+        rInner*cos(angle2), rInner*cos(angle1);
+        rOuter*sin(angle1), rOuter*sin(angle2), ...
+        rInner*sin(angle2), rInner*sin(angle1)
+    ];
+
+    ringPoints(1,:) = ringPoints(1,:) + crm.centerX;
+    ringPoints(2,:) = ringPoints(2,:) + crm.centerY;
+
+    CSX = AddPolygon(CSX,'patch',20,'z', ...
+        substrate.thickness,ringPoints);
+end
+% Four large circular pads at cardinal positions
+
+crm.dumbbellRadius = 1.5;  % R from paper
+crm.dumbbellDistance = 2.2; % Estimated centre position
+
+for k = 1:4
+
+    angle = k*pi/2;
+
+    padX = crm.centerX + crm.dumbbellDistance*cos(angle);
+    padY = crm.centerY + crm.dumbbellDistance*sin(angle);
+
+    padPoints = zeros(2,crm.segments);
+
+    for n = 1:crm.segments
+
+        a = (n-1)*2*pi/crm.segments;
+
+        padPoints(:,n) = [
+            padX + crm.dumbbellRadius*cos(a);
+            padY + crm.dumbbellRadius*sin(a)
+        ];
+
+    end
+
+    CSX = AddPolygon(CSX,'patch',20,'z', ...
+        substrate.thickness,padPoints);
+
+end
+% Two parallel connecting strips for each large circular pad
+
+crm.dumbbellStripWidth = 0.3;  % Estimated strip width
+crm.dumbbellGap = 0.3;         % Estimated gap between strips
+
+for k = 0:3
+
+    angle = k*pi/2;
+
+    % Start at the outside edge of the large circular pad
+   rStart = crm.dumbbellDistance + crm.dumbbellRadius - 0.4;
+
+    % End at the inner-ring opening
+    rEnd = crm.T - crm.M;
+
+    % Draw two strips, one on each side of the centre line
+    for side = [-1 1]
+
+        offset = side * ...
+            (crm.dumbbellGap/2 + crm.dumbbellStripWidth/2);
+
+        halfWidth = crm.dumbbellStripWidth/2;
+
+        localPoints = [
+            offset-halfWidth, offset+halfWidth, ...
+            offset+halfWidth, offset-halfWidth;
+            rStart, rStart, rEnd, rEnd
+        ];
+
+        rotation = [
+            cos(angle), -sin(angle);
+            sin(angle),  cos(angle)
+        ];
+
+        stripPoints = rotation*localPoints;
+
+        stripPoints(1,:) = stripPoints(1,:) + crm.centerX;
+        stripPoints(2,:) = stripPoints(2,:) + crm.centerY;
+
+        CSX = AddPolygon(CSX,'patch',20,'z', ...
+            substrate.thickness,stripPoints);
+
+    end
+end
+% Four diagonal lollipop elements
+
+crm.lollipopRadius = 0.8;  % N: circular head radius
+crm.lollipopDistance = 7.0;
+crm.lollipopTailWidth = 0.3;
+crm.lollipopTailEnd = 5.3;
+
+for k = 1:4
+
+    angle = pi/4 + (k-1)*pi/2;
+
+    % Centre of circular head
+    headX = crm.centerX + crm.lollipopDistance*cos(angle);
+    headY = crm.centerY + crm.lollipopDistance*sin(angle);
+
+    % Draw circular head
+    headPoints = zeros(2,crm.segments);
+
+    for n = 1:crm.segments
+        a = (n-1)*2*pi/crm.segments;
+
+        headPoints(:,n) = [
+            headX + crm.lollipopRadius*cos(a);
+            headY + crm.lollipopRadius*sin(a)
+        ];
+    end
+
+    CSX = AddPolygon(CSX,'patch',20,'z', ...
+        substrate.thickness,headPoints);
+
+    % Draw narrow tail extending inward
+    rStart = crm.lollipopDistance;
+    rEnd = crm.lollipopTailEnd;
+    halfWidth = crm.lollipopTailWidth/2;
+
+    localPoints = [
+        -halfWidth, halfWidth, halfWidth, -halfWidth;
+        rEnd, rEnd, rStart, rStart
+    ];
+
+    rotation = [
+        cos(angle), -sin(angle);
+        sin(angle),  cos(angle)
+    ];
+
+    tailPoints = rotation*localPoints;
+
+    tailPoints(1,:) = tailPoints(1,:) + crm.centerX;
+    tailPoints(2,:) = tailPoints(2,:) + crm.centerY;
+
+    CSX = AddPolygon(CSX,'patch',20,'z', ...
+        substrate.thickness,tailPoints);
+end
+% Four inward-facing metallic strips
+
+crm.stubWidth = 0.3;
+crm.stubOuterRadius = crm.U;
+crm.stubInnerRadius = crm.T + 0.3;
+
+for k = 1:4
+
+    angle = (k-1)*pi/2;
+
+    r1 = crm.stubOuterRadius;
+    r2 = crm.stubInnerRadius;
+    halfWidth = crm.stubWidth/2;
+
+    localPoints = [
+        -halfWidth, halfWidth, halfWidth, -halfWidth;
+        r2, r2, r1, r1
+    ];
+
+    rotation = [
+        cos(angle), -sin(angle);
+        sin(angle),  cos(angle)
+    ];
+
+    stubPoints = rotation*localPoints;
+
+    stubPoints(1,:) = stubPoints(1,:) + crm.centerX;
+    stubPoints(2,:) = stubPoints(2,:) + crm.centerY;
+
+    CSX = AddPolygon(CSX,'patch',20,'z', ...
+        substrate.thickness,stubPoints);
+end
+end % End of four-CRM placement loop
 
 % Create Substrate
 CSX = AddMaterial( CSX, 'substrate' );
@@ -190,6 +598,7 @@ WriteOpenEMS( [Sim_Path '/' Sim_CSX], FDTD, CSX );
 
 % show the structure
 CSXGeomPlot( [Sim_Path '/' Sim_CSX] );
+return;
 
 
 % run openEMS
